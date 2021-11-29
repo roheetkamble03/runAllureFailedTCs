@@ -20,13 +20,18 @@ public class RunOnlyFailedTestCasesOnJenkins {
         File tempAllureReportZipFile = null;
         String jobName = args[0];
         String buildNumber = args[1];
+        boolean isTwoDotO = Boolean.parseBoolean(args[2]);
         while(!isZipFileProcessed) {
             try {
                 retryCount++;
-                if(jobName.equals("regression-core-android-automation")) {
-                    command = "curl --location --request GET https://jenkins-digital.rccl.com/job/guest-app/job/MobileAutomation/job/" + jobName + "/" + buildNumber + "/artifact/allure-report.zip  --user 42aac170:d17088ef48af88b3fdb8b53ddd28e3c3";
-                }else {
-                    command = "curl --location --request GET https://jenkins-digital.rccl.com/job/guest-app/job/automation/job/" + jobName + "/" + buildNumber + "/artifact/allure-report.zip  --user 42aac170:d17088ef48af88b3fdb8b53ddd28e3c3";
+                if(isTwoDotO) {
+                    command = "curl --location --request GET https://jenkins-digital.rccl.com/" + jobName + "/" + buildNumber + "/artifact/allure-report.zip  --user 42aac170:d17088ef48af88b3fdb8b53ddd28e3c3";
+                }else{
+                    if (jobName.equals("regression-core-android-automation")) {
+                        command = "curl --location --request GET https://jenkins-digital.rccl.com/job/guest-app/job/MobileAutomation/job/" + jobName + "/" + buildNumber + "/artifact/allure-report.zip  --user 42aac170:d17088ef48af88b3fdb8b53ddd28e3c3";
+                    } else {
+                        command = "curl --location --request GET https://jenkins-digital.rccl.com/job/guest-app/job/automation/job/" + jobName + "/" + buildNumber + "/artifact/allure-report.zip  --user 42aac170:d17088ef48af88b3fdb8b53ddd28e3c3";
+                    }
                 }
                 ProcessBuilder processBuilder = new ProcessBuilder(command.split(" "));
                 processBuilder.directory(new File("/home/"));
@@ -55,49 +60,102 @@ public class RunOnlyFailedTestCasesOnJenkins {
     }
 
 
-    private static String processPackageJson(final JSONArray trackJSONArray){
-        JSONObject trackObject;
+    private static String processPackageJson(final JSONArray grandLevelArrayJsonObject){
+        JSONObject levelOneParentObject;
+        JSONObject levelOneObject;
+        JSONArray levelOneChildrenArray;
 
-        JSONArray classJSONArray;
-        JSONObject classJSONObject;
+        JSONArray levelOneChildObjectArray;
+        JSONArray levelTwoChildObjectArray;
+        JSONArray levelThreeChildObjectArray;
+        JSONObject levelOneChildObject;
+        JSONObject levelTwoChildObject;
+        JSONObject levelThreeObject;
 
-        JSONArray testCaseJSONArray;
-        JSONObject testCaseJSONObject;
-
-        String trackName;
-        String className;
-        String testCaseName;
+        String testCasePath = null;
         String testCaseStatus;
         String tCtoBeExecute;
         Set<String> testCaseListTobeExecute = new HashSet<>();
 
         //Track
-        for(int trackCount=0;trackCount<trackJSONArray.size();trackCount++){
-            trackObject = (JSONObject) trackJSONArray.get(trackCount);
-            trackName = trackObject.get("name").toString().trim();
-            classJSONArray = (JSONArray) trackObject.getOrDefault("children",new String[0]);
-            //Class
-            for (int testClassCount = 0;testClassCount<classJSONArray.size();testClassCount++){
-                classJSONObject = (JSONObject) classJSONArray.get(testClassCount);
-                className = classJSONObject.get("name").toString();
+        for(int trackCount=0;trackCount<grandLevelArrayJsonObject.size();trackCount++){
+            levelOneParentObject = (JSONObject) grandLevelArrayJsonObject.get(trackCount);
+            levelOneChildrenArray = (JSONArray) levelOneParentObject.getOrDefault("children",new String[0]);
 
-                if(classJSONObject.get("children")!=null){
-                    testCaseJSONArray = (JSONArray) classJSONObject.getOrDefault("children", new String[0]);
+            //Class
+            for (int levelOneChildCount = 0;levelOneChildCount<levelOneChildrenArray.size();levelOneChildCount++){
+                levelOneObject = (JSONObject) levelOneChildrenArray.get(levelOneChildCount);
+
+                if(levelOneObject.get("children")!=null) {
+                    levelOneChildObjectArray = (JSONArray) levelOneObject.getOrDefault("children", new String[0]);
                     //TestCase
-                    for (int testCaseCount = 0; testCaseCount < testCaseJSONArray.size(); testCaseCount++) {
-                        testCaseJSONObject = (JSONObject) testCaseJSONArray.get(testCaseCount);
-                        testCaseName = testCaseJSONObject.get("name").toString();
-                        testCaseStatus = testCaseJSONObject.get("status").toString();
-                        if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
-                            tCtoBeExecute = "--tests " + trackName + "." + className + "." + testCaseName;
-                            testCaseListTobeExecute.add(tCtoBeExecute);
+                    for (int levelOneTestCaseCount = 0; levelOneTestCaseCount < levelOneChildObjectArray.size(); levelOneTestCaseCount++) {
+                        levelOneChildObject = (JSONObject) levelOneChildObjectArray.get(levelOneTestCaseCount);
+                        if (levelOneChildObject.get("status") != null) {
+                            testCaseStatus = levelOneChildObject.get("status").toString();
+                            if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
+                                testCasePath = levelOneParentObject.get("name").toString().trim() + ".";
+                                testCasePath = testCasePath + levelOneObject.get("name").toString() + ".";
+                                testCasePath = testCasePath + levelOneChildObject.get("name").toString();
+                                tCtoBeExecute = "--tests " + testCasePath;
+                                testCaseListTobeExecute.add(tCtoBeExecute);
+                            }
+                        } else {
+                                levelTwoChildObjectArray = (JSONArray) levelOneChildObject.getOrDefault("children", new String[0]);
+                                for (int levelTwoChildCount = 0; levelTwoChildCount < levelTwoChildObjectArray.size(); levelTwoChildCount++) {
+                                    levelTwoChildObject = (JSONObject) levelTwoChildObjectArray.get(levelTwoChildCount);
+                                    if (levelTwoChildObject.get("children") != null) {
+                                        if (levelTwoChildObject.get("status") != null) {
+                                            testCaseStatus = levelTwoChildObject.get("status").toString();
+                                            if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
+                                                testCasePath = levelOneParentObject.get("name").toString().trim() + ".";
+                                                testCasePath = testCasePath + levelOneObject.get("name").toString() + ".";
+                                                testCasePath = testCasePath + levelOneChildObject.get("name").toString()+ ".";
+                                                testCasePath = testCasePath + levelTwoChildObject.get("name").toString();
+                                                tCtoBeExecute = "--tests " + testCasePath;
+                                                testCaseListTobeExecute.add(tCtoBeExecute);
+                                            }
+                                        } else {
+                                            levelThreeChildObjectArray = (JSONArray) levelTwoChildObject.getOrDefault("children", new String[0]);
+                                            for (int levelThreeChildCount = 0; levelThreeChildCount < levelThreeChildObjectArray.size(); levelThreeChildCount++) {
+                                                levelThreeObject = (JSONObject) levelThreeChildObjectArray.get(levelThreeChildCount);
+                                                if (levelThreeObject.get("status") != null) {
+                                                    testCaseStatus = levelThreeObject.get("status").toString();
+                                                    if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
+                                                        testCasePath = levelOneParentObject.get("name").toString().trim() + ".";
+                                                        testCasePath = testCasePath + levelOneObject.get("name").toString() + ".";
+                                                        testCasePath = testCasePath + levelOneChildObject.get("name").toString()+ ".";
+                                                        testCasePath = testCasePath + levelTwoChildObject.get("name").toString() + ".";
+                                                        testCasePath = testCasePath + levelThreeObject.get("name").toString();
+                                                        tCtoBeExecute = "--tests " + testCasePath;
+                                                        testCaseListTobeExecute.add(tCtoBeExecute);
+                                                    }
+                                                } else {
+
+                                                }
+                                            }
+                                        }
+                                    }else {
+                                            testCaseStatus = levelTwoChildObject.get("status").toString();
+                                            if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
+                                                testCasePath = levelOneParentObject.get("name").toString().trim() + ".";
+                                                testCasePath = testCasePath + levelOneObject.get("name").toString() + ".";
+                                                testCasePath = testCasePath + levelOneChildObject.get("name").toString()+ ".";
+                                                testCasePath = testCasePath + levelTwoChildObject.get("name").toString();
+                                                tCtoBeExecute = "--tests " + testCasePath;
+                                                testCaseListTobeExecute.add(tCtoBeExecute);
+                                            }
+                                        }
+                                    }
+                                }
                         }
-                    }
                 }else{
-                    testCaseName = classJSONObject.get("name").toString();
-                    testCaseStatus = classJSONObject.get("status").toString();
+                    testCaseStatus = levelOneParentObject.get("status").toString();
                     if (testCaseStatus.equalsIgnoreCase("broken") || testCaseStatus.equalsIgnoreCase("failed")) {
-                        tCtoBeExecute = "--tests " + trackName + "." + testCaseName;
+                        testCasePath = levelOneParentObject.get("name").toString() + ".";
+                        testCasePath = testCasePath + levelOneObject.get("name").toString() + ".";
+                        testCasePath = testCasePath + levelOneObject.get("name").toString();
+                        tCtoBeExecute = "--tests " + testCasePath;
                         testCaseListTobeExecute.add(tCtoBeExecute);
                     }
                 }
